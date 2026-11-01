@@ -10,25 +10,43 @@ Take-home assessment for the Software Engineer role at Campfire.
 | Frontend | React 18, Vite, Material UI |
 | Tests | pytest |
 
+## Demo video
+https://github.com/user-attachments/assets/8cd238af-d2ac-4552-b098-4174f82ee027
+
+
 ## Quick start
 
 You need two terminals, one for each service.
 
 **Terminal 1: Backend** (http://localhost:8000)
 
+First time only:
+
 ```bash
 cd Backend
-python3 -m venv .venv            # first time only
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt  # first time only
+pip install -r requirements.txt
+```
+
+Start the server (after the first time, run `cd Backend` and `source .venv/bin/activate` first):
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
 **Terminal 2: Frontend** (http://localhost:5173)
 
+First time only:
+
 ```bash
 cd Frontend
-npm install                      # first time only
+npm install
+```
+
+Start the app:
+
+```bash
 npm run dev
 ```
 
