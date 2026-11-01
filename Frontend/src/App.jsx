@@ -110,6 +110,11 @@ export default function App() {
 
     const message = inputError || error
 
+    // True when every account line is exactly "0.00" (compared as text, never as numbers).
+    const allZero =
+        statement !== null &&
+        statement.sections.every((section) => section.lines.every((line) => line.amount === '0.00'))
+
     return (
         <Container maxWidth="md" sx={{ py: 4 }}>
             <Stack spacing={3}>
@@ -179,9 +184,13 @@ export default function App() {
 
                 {/* While reloading, keep showing the previous statement, dimmed. */}
                 {statement && !cleared && (
-                    <div style={{ opacity: loading ? 0.5 : 1 }}>
+                    <Stack spacing={2} sx={{ opacity: loading ? 0.5 : 1 }}>
+                        {/* A quiet period still shows the full table. The note just says it is not an error. */}
+                        {allZero && (
+                            <Alert severity="info">All amounts are zero for this period.</Alert>
+                        )}
                         <StatementTable statement={statement} />
-                    </div>
+                    </Stack>
                 )}
             </Stack>
         </Container>
