@@ -4,7 +4,7 @@ import Container from '@mui/material/Container'
 import Divider from '@mui/material/Divider'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchIncomeStatement } from './api'
 import { DateInputs, QuickSelect } from './components/DateRangeBar'
 import StatementTable from './components/StatementTable'
@@ -12,105 +12,79 @@ import { formatDate } from './format'
 import { PRESETS } from './presets'
 
 export default function App() {
-    // What is typed in the two date fields. Changing these does not load anything.
-    // The page opens on Q1 2026, the period the assessment asks about.
+    // Typed dates. Changing these does not load anything. Opens on Q1 2026.
     const [start, setStart] = useState(PRESETS[0].start)
     const [end, setEnd] = useState(PRESETS[0].end)
 
-    // The range that is actually loaded. It changes only when Search or a Quick select
-    // chip is clicked, or when the dates are cleared. `n` goes up on every click, so
-    // clicking Search again with the same dates loads the statement again.
-    const [applied, setApplied] = useState({ start: PRESETS[0].start, end: PRESETS[0].end, n: 0 })
-
     const [statement, setStatement] = useState(null)
-    // The outcome of the latest request, tagged with the dates it was for.
-    const [result, setResult] = useState({ key: '', error: '' })
-    // A problem with the typed dates, found when Search is clicked.
-    const [inputError, setInputError] = useState('')
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState('')
 
-    const key = `${applied.start}|${applied.end}`
+    // The request in flight, so a newer one can cancel it.
+    const request = useRef(null)
 
-    // Dates cleared on purpose (X button): nothing to show, and not an error.
-    const cleared = !applied.start
-
-    // Still loading while the latest result is for a different range than the loaded one.
-    const loading = !cleared && result.key !== key
-    const error = result.key === key ? result.error : ''
-
-    // Load the statement whenever the applied range changes.
     useEffect(() => {
-        if (cleared) return
+        loadRange(PRESETS[0].start, PRESETS[0].end)
+        return () => request.current.abort()
+    }, [])
 
-        // If another request starts before this one finishes, cancel this one
-        // so an older response can never overwrite a newer one.
-        const controller = new AbortController()
+    function loadRange(from, to) {
+        request.current?.abort() // an old response can never overwrite a newer one
+        request.current = new AbortController()
+        setError('')
+        setLoading(true)
 
-        fetchIncomeStatement(applied.start, applied.end, controller.signal)
+        fetchIncomeStatement(from, to, request.current.signal)
             .then((data) => {
                 setStatement(data)
-                setResult({ key, error: '' })
+                setLoading(false)
             })
             .catch((err) => {
                 if (err.name === 'AbortError') return
-                // The request failed: drop the old statement so stale numbers are not shown.
-                setStatement(null)
-                setResult({ key, error: err.message })
+                setStatement(null) // do not leave stale numbers on screen
+                setError(err.message)
+                setLoading(false)
             })
-
-        return () => controller.abort()
-    }, [applied, cleared, key])
-
-    // Load a range now.
-    function loadRange(newStart, newEnd) {
-        setInputError('')
-        setResult({ key: '', error: '' }) // shows the loading state, even for the same dates
-        setApplied((previous) => ({ start: newStart, end: newEnd, n: previous.n + 1 }))
     }
 
-    // Typing in the date fields only updates the fields.
+    // Empty the page, with an optional error message.
+    function resetStatement(message = '') {
+        request.current?.abort()
+        setStatement(null)
+        setLoading(false)
+        setError(message)
+    }
+
     function handleDateChange(newStart, newEnd) {
         setStart(newStart)
         setEnd(newEnd)
-        setInputError('')
-    }
-
-    // The typed dates are not valid: show the error and clear the statement,
-    // so numbers for some other range are not left on screen under an error.
-    function rejectInput(message) {
-        setInputError(message)
-        setStatement(null)
-        setApplied((previous) => ({ start: '', end: '', n: previous.n + 1 }))
+        setError('')
     }
 
     // Search button (or Enter): needs both dates, with start not after end.
     function handleSearch() {
         if (!start || !end) {
-            rejectInput('Choose both a start and an end date.')
+            resetStatement('Choose both a start and an end date.')
         } else if (start > end) {
-            rejectInput('Start date must not be after the end date.')
+            resetStatement('Start date must not be after the end date.')
         } else {
             loadRange(start, end)
         }
     }
 
-    // Quick select chip: fill the fields and load straight away.
     function handleQuickSelect(newStart, newEnd) {
         setStart(newStart)
         setEnd(newEnd)
         loadRange(newStart, newEnd)
     }
 
-    // X button: empty the fields and the statement.
     function handleClear() {
         setStart('')
         setEnd('')
-        setInputError('')
-        setApplied((previous) => ({ start: '', end: '', n: previous.n + 1 }))
+        resetStatement()
     }
 
-    const message = inputError || error
-
-    // True when every account line is exactly "0.00" (compared as text, never as numbers).
+    // Every line is exactly "0.00" (compared as text, never as numbers).
     const allZero =
         statement !== null &&
         statement.sections.every((section) => section.lines.every((line) => line.amount === '0.00'))
@@ -142,15 +116,11 @@ export default function App() {
 
                 {/* Quick select below, aligned to the right */}
                 <Stack sx={{ alignItems: 'flex-end' }}>
-                    <QuickSelect
-                        start={applied.start}
-                        end={applied.end}
-                        onChange={handleQuickSelect}
-                    />
+                    <QuickSelect start={start} end={end} onChange={handleQuickSelect} />
                 </Stack>
 
                 {/* Company, period and currency are shown only while a statement is loaded. */}
-                {statement && !cleared && (
+                {statement && (
                     <Stack
                         direction="row"
                         spacing={1.5}
@@ -171,9 +141,9 @@ export default function App() {
                     </Stack>
                 )}
 
-                {message && <Alert severity="error">{message}</Alert>}
+                {error && <Alert severity="error">{error}</Alert>}
 
-                {cleared && !message && (
+                {!statement && !loading && !error && (
                     <Alert severity="info">
                         Choose a start and an end date, then click search, or pick a quick select
                         range.
@@ -183,7 +153,7 @@ export default function App() {
                 {loading && !statement && <CircularProgress sx={{ alignSelf: 'center' }} />}
 
                 {/* While reloading, keep showing the previous statement, dimmed. */}
-                {statement && !cleared && (
+                {statement && (
                     <Stack spacing={2} sx={{ opacity: loading ? 0.5 : 1 }}>
                         {/* A quiet period still shows the full table. The note just says it is not an error. */}
                         {allZero && (
